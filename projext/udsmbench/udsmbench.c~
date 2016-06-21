@@ -1,0 +1,24 @@
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <stdio.h>
+#include <getopt.h>
+
+void printUsage(char *pProgrmName)
+{
+  printf("%s [-s or -r] [-n recverNum] [-m modId]\n", pProgrmName);
+}
+
+int main(int argc, char agrv *[])
+{
+  int lSts = 0;
+  int lRet = 0;
+
+  if (argc < 2)
+    {
+      printUsage();
+      return 0;
+    }
+
+  
+}
