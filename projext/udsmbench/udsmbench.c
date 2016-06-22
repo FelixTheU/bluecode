@@ -7,9 +7,13 @@
 #include <fcntl.h>
 #include <string.h>
 #include <poll.h>
+#include <time.h>
+#include <errno.h>
+#include <unistd.h>
 
 #define SENDER_SOCK "/tmp/udsmbench_sender"
-#define RECVER_SOCK "/tmp/udsmbench_recv_%d"
+#define RECEVER_SOCK "/tmp/udsmbench_recv_%d"
+
 void printUsage(char *pProgrmName)
 {
   printf("%s [-s or -r] [-n recverNum] [-m modId]\n", pProgrmName);
@@ -22,12 +26,14 @@ void asSender(int modNum)
   int sdrFd = socket(AF_UNIX, SOCK_DGRAM, 0);
 
   lSts = fcntl(sdrFd, F_GETFL, 0);
-  fcntl(sdrFd, F_SETFL, lSts | O_NONBLOCK);
+ lSts =   fcntl(sdrFd, F_SETFL, lSts | O_NONBLOCK);
+ 
   
   struct sockaddr_un sdrAddr;
   sdrAddr.sun_family = AF_UNIX;
   strcpy(sdrAddr.sun_path, SENDER_SOCK);
 
+  unlink(SENDER_SOCK);
   lSts = bind(sdrFd, (struct sockaddr *)&sdrAddr, sizeof (sdrAddr));
 
   /* prepare mods's addr */
@@ -37,12 +43,18 @@ void asSender(int modNum)
   char modSockPathBuf[50] = { 0 };
   
   int sizeK = 0, sendTimes = 0;
-  scanf("sendto %d %d", &sizeK, &sendTimes);
+  while (1)
+    {
+      printf("while.\n");
+      char inBuf[100] = { 0 };
+      read(0, inBuf, sizeof (inBuf));
+      sscanf(inBuf, "sendto %d %d\n", &sizeK, &sendTimes);
+      printf("sizeK:%d, sendTimes:%d.\n", sizeK, sendTimes);
   
-  for (; i < modNum; i++)
+  for (i = 0; i < modNum; i++)
     {
       pModsAddr[i].sun_family = AF_UNIX;
-      sprintf(modSockPathBuf, RECVER_SOCK, i);
+      sprintf(modSockPathBuf, RECEVER_SOCK, i);
       strcpy(pModsAddr[i].sun_path, modSockPathBuf);
       pRemainMap[i] = sendTimes;
     }
@@ -51,22 +63,40 @@ void asSender(int modNum)
   char *pSendBuf = (char *)malloc(sendSize);
   bzero(pSendBuf, sendSize);
 
-  printf("开始发送, at %lu\n", time);
+  int bRemain = 1;
+  printf("开始发送, at %lu\n", time(NULL));
+  while (bRemain)
+    {
+      
   for (i = 0; i < modNum; i++)
     {
       while (pRemainMap[i] > 0)
 	{
-	  lSts = sendto(sdrFd, pSendBuf, sendSize, (struct sockaddr *)&pModsAddr[i], sizeof (struct sockaddr_un), 0);
+	  printf("before sendto.\n");
+	  lSts = sendto(sdrFd, pSendBuf, sendSize, 0,  (struct sockaddr *)&pModsAddr[i], sizeof (struct sockaddr_un));
+
 	  if (lSts < 0 && EAGAIN == errno)
 	    {
+	      printf("EAGAIN.\n");
 	      break;
 	    }
 	  if (lSts < 0)
 	    {
+	      printf("发送出错.\n");
 	      return ;
 	    }
-
-	  pRemainMap[i]--;
+	  printf("after sendto.\n");
+	  printf("remain: %d.\n", pRemainMap[i]);
+	  if (--pRemainMap[i] == 0)
+	    {			/* 发送结束消息 */
+	      pSendBuf[0] = '#';
+	      lSts = sendto(sdrFd, pSendBuf, sendSize, 0, (struct sockaddr *)&pModsAddr[i], sizeof (struct sockaddr_un));
+	      if (lSts > 0 )
+		{
+		  printf("结束消息发送成功.\n");
+		}
+	      pSendBuf[0] = 0;
+	    }
 	}
 
       int j = 0;
@@ -78,15 +108,55 @@ void asSender(int modNum)
 	    }
 	}
       
-      
+      bRemain = 0;
       printf("消息发送完成 at %lu\n", time(NULL));
       break;
     goon:
+      continue;
+    }
+    }
     }
   
 }
 
-int main(int argc, char agrv *[])
+void asRecever(int modNum)
+{
+  char recvSockBuf[30] = { 0 };
+  sprintf(recvSockBuf, RECEVER_SOCK, modNum);
+  
+  int recvFd = socket(AF_UNIX, SOCK_DGRAM, 0);
+  struct sockaddr_un recvAddr;
+  recvAddr.sun_family = AF_UNIX;
+  strcpy(recvAddr.sun_path, recvSockBuf);
+
+  unlink(recvSockBuf);
+  bind(recvFd, (struct sockaddr *)&recvAddr, sizeof (recvAddr));
+
+  struct sockaddr_un sdrAddr;
+  socklen_t addrLen = sizeof (sdrAddr);
+  char recvBuf[1024 * 100] = { 0 };
+  int lSts = 0;
+  unsigned long ulRecvCnt = 0;
+  
+  while (1)
+    {
+      lSts = recvfrom(recvFd, recvBuf, sizeof (recvBuf), 0, (struct sockaddr *)&sdrAddr, &addrLen);
+      if (lSts < 0 )
+	{
+	  return ;
+	}
+      printf("收到消息.\n");
+
+      ulRecvCnt++;
+      if (*recvBuf == '#')
+	{
+	  printf("消息接收完毕，共接收 %d, at %lu.\n", ulRecvCnt, time(NULL));
+	}
+      
+    }
+    
+}
+int main(int argc, char *argv[])
 {
   int lSts = 0;
   int lRet = 0;
@@ -98,7 +168,7 @@ int main(int argc, char agrv *[])
   int opt = 0;
   if (argc < 2)
     {
-      printUsage();
+      printUsage(argv[0]);
       return 0;
     }
 
