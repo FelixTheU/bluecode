@@ -1,0 +1,36 @@
+#+title:cpp emacs
+#+author:Felix Zheng
+#+date:2016年 06月 18日 星期六 16:23:17 CST
+
+* 代码跳转
+** imenu & cscope or gtags
+*** cscope
+**** 安装
+    emacs 中使用cscope 需要有cscope 软件和 xcsope.el 插件。
+***** install from package
+      on fedora:
+      fedora: sudo dnf install cscope
+      安装好后，xcscope.el 已经躺在了：
+      /usr/share/emacs/site-lisp/xcscope.el
+***** install from src code
+      xcscope 下载地址：https://sourceforge.net/projects/cscope/files/
+      解压并三步make 之后：
+      xcscope.el 位于源代码包的contrib/xcscope，将其 cp 到.emcs.d下：
+      同时将其中的cscope-indexer放入/usr/bin，同时使它具有可执行权限。
+      cp xcscope.el ~/.emacs.d/ 
+      sudo cp cscope-indexer /usr/bin 
+      cd /usr/bin 
+      sudo chmod 744 cscope-indexer 
+**** 配置
+     (require 'xcscope)
+     ;; 设置仅在打开c/c++文件时打开 
+     (add-hook 'c-mode-common-hook '(lambda() (require 'xcscope))) 
+
+     ;; 打开cscope时不更新，提高索引速度 
+     (setq cscope-do-not-update-database t) 
+**** 使用
+     如果需要使用cscope，请将cscope-indexer放入该目录，同时执行M+X
+     cscope-index-files
+    即可在该目录下生成索引文件。
+    或者在该目录下执行 sudo cscope-indexer -r,
+    它会生成cscope.files和cscope.out两个文件或目录。
