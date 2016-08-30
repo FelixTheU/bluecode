@@ -1,0 +1,255 @@
+;;; package --- Felix's .emacs
+;;; commentary:
+;;; author: Felix Zheng.
+;;; mail:ifelixzheng@163.com
+;;; date: 04:30 2016/07/10
+;;; record:04:32 2016/07/10 -> 配置各种插件，补全、代码跳转、代码导航等
+;;; code:
+
+(custom-set-variables
+ ;; custom-set-variables was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ '(doxymacs-doxygen-style "C++")
+ '(show-paren-mode t)
+ '(tool-bar-mode nil)
+ '(user-full-name "zhengsw"))
+
+(custom-set-faces
+ ;; custom-set-faces was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ )
+
+;; 总是显示行号                    20:26 2014/10/18
+ (global-linum-mode 1)
+
+;; 设置窗口默认大小                15:48 2013/03/06
+(setq default-frame-alist '((height . 30) (width . 80)))
+
+;; 快速跳转到 .emacs文件
+(defun to-dotemacs ()
+  "Swich to the buffer that can edit the file .emacs."
+  (interactive)
+  (find-file "~/.emacs"))
+(global-set-key (kbd "C-x p") 'to-dotemacs)   ;; means profile.
+
+;; 块注释快捷键                    16:05 2013/03/06
+(global-set-key (kbd "C-c C-r") 'comment-or-uncomment-region)
+;; (global-set-key (kbd "C-c C-u") 'uncomment-region)
+
+;; buffer 切换快捷键 14:33 2014/09/27
+(global-set-key (kbd "C-c n") 'next-buffer)
+(global-set-key (kbd "C-c p") 'previous-buffer)
+
+;; 14:56 2014/09/27set mArk
+(global-set-key (kbd "C-c a") 'set-mark-command)
+
+;; 执行当前缓冲中的脚本             12:03 2013/03/19
+(defun run-script-without-input ()
+  "Run current script that needn't input on shell command."
+  (interactive)
+  (save-buffer)
+  (shell-command (concat "./"
+			  (buffer-name))))
+(global-set-key (kbd "C-x c") 'run-script-without-input)
+(fset 'enter-macro [return])
+
+(defun run-script-in-shell ()
+  "Run current script in a shell and it will not return back to current buffer."
+  (interactive)
+  (save-buffer)
+  (let ((script-file (buffer-file-name)))
+    (other-window 1)
+    (shell)
+    (insert "\"" script-file "\"")
+    (execute-kbd-macro 'enter-macro)))
+
+;; 为执行脚本设置快捷键                        12:39 2013/03/19
+(global-set-key (kbd "C-c C-c") 'run-script-in-shell)
+(global-set-key (kbd "C-c C-s") 'replace-string)
+
+;; 插入当前时间                                16:58 2012/11/13
+(defun insert-current-time ()
+  "Print the current time and date."
+  (interactive)
+  (insert (format-time-string "%H:%M %Y/%m/%d" (current-time))))
+(global-set-key (kbd "C-x t") 'insert-current-time)
+
+;;; Always do syntax highlighting 打开高亮
+(global-font-lock-mode 1)
+
+;;; Also highlight parens 括号配对高亮
+(setq show-paren-delay 0
+      show-paren-style 'parenthesis)
+(show-paren-mode 1)
+
+;; input the real tab   14:29 2014/09/27
+(global-set-key [C-tab] '(lambda () (interactive) (insert-char 9 1)))
+
+;; 编译快捷键
+(global-set-key [(f7)] 'compile)
+
+;; 添加新的 ELPA 插件源                 03:41 2016/07/10
+(require 'package)
+(add-to-list 'package-archives'
+	     ("elpa" . "http://tromey.com/elpa/") t)
+;; (add-to-list 'package-archives'
+;; 	     ("marmalade" . "http://marmalade-repo.org/packages/") t)
+(add-to-list 'package-archives'
+ 	     ("melpa" . "http://melpa.milkbox.net/packages/") t)
+(package-initialize)
+
+;; yasnippet 模板系统
+(require 'yasnippet)
+;;; 启动后自动启用补全
+(add-hook 'after-init-hook 'yas-global-mode)
+
+;; helm (ELPA 安装) 管理文件与buffer（与ido 类型）
+(require 'helm-config)
+(global-set-key (kbd "M-X") 'helm-M-x)
+
+;; company 补全配置
+ (add-hook 'after-init-hook 'global-company-mode)
+(setq company-idle-delay 0)    ; 无延迟，总是自动进行补全
+;; 绑定补全快捷键
+(global-set-key (kbd "C-c j") 'company-complete-common)
+;; 添加补全后端，补全头文件
+;; 或者 hook global-company-mode-hook
+(add-hook 'c-mode-common-hook
+	  '(lambda()
+	     (add-to-list 'company-backends
+			  'company-c-headers)))
+
+;; electric-mode (emacs 24自带)自动括号配对补全
+(require 'electric)
+;; 编辑时智能缩进，类似于C-j的效果——这个C-j中，zencoding和electric-pair-mode冲突
+(electric-indent-mode t)
+;; 系统本身内置的智能自动补全括号(felix 表示爱死啦！！！)
+(electric-pair-mode t)
+;; 特定条件下插入新行
+;; (electric-layout-mode t)
+
+;; xcscope 代码跳转
+(require 'xcscope)
+(cscope-setup)
+
+;; ace-jump jump easily （跳转真棒）
+(require 'ace-jump-mode)
+;; ace jump mode major function;;
+(autoload  'ace-jump-mode  "ace-jump-mode"
+  "Emacs quick move minor mode"
+  t)
+;; you can select the key you prefer to
+(define-key global-map (kbd "C-c SPC") 'ace-jump-mode)
+;; enable a more powerful jump back function from ace jump mode-compile;;
+(autoload  'ace-jump-mode-pop-mark
+  "ace-jump-mode"
+  "Ace jump back:-)"
+  t)
+(eval-after-load "ace-jump-mode"
+  '(ace-jump-mode-enable-mark-sync))
+(define-key global-map (kbd "C-x SPC") 'ace-jump-mode-pop-mark)
+
+;; imenu jump (跳转当前文件中函数)
+(define-key global-map (kbd "C-c o") 'imenu)
+
+;; flycheck 实时语法检查
+(require 'flycheck)
+;;; (add-hook 'c-mode-commmn-hook 'flycheck-mode)
+(add-hook 'after-init-hook #'global-flycheck-mode)
+
+;; doxymacs
+(require 'doxymacs)
+(add-hook 'c-mode-common-hook 'doxymacs-mode)
+;; 注释高亮，针对C和C++程序
+(defun my-doxymacs-font-lock-hook ()
+  "Doxymacs fonts lock."
+  (if (or (eq major-mode 'c-mode) (eq major-mode 'c++-mode))
+      (doxymacs-font-lock)))
+(add-hook 'font-lock-mode-hook 'my-doxymacs-font-lock-hook)
+
+;; (add-hook 'c-mode-common-hook 'doxymacs-mode)
+;; (add-hook 'c++-mode-common-hook 'doxymacs-mode)
+
+;; sr-speedbar show in current frame
+;; 目录树文件、代码管理
+(require 'sr-speedbar)
+;; (setq sr-speedbar-right-side nil)
+ (setq sr-speedbar-width 25)
+ (global-set-key (kbd "<f8>") 'sr-speedbar-toggle)
+(setq speedbar-use-images nil)
+;; 在speedbar 中关闭显示行号功能
+(add-hook 'speedbar-mode-hook '(lambda () (linum-mode -1)))
+
+;; neotree 项目文件管理
+;; (不能查看代码中函数，但可以管理文件的创建与删除)
+;; 作为 sr-speedbar 的补充
+(require 'neotree)
+(global-set-key (kbd "M-8") 'neotree-toggle)
+
+;; zenburn-theme 主题
+(require 'zenburn-theme)
+
+;; color-theme 主题
+(require 'color-theme)
+
+;; idle-highlight 高亮当前选中符号
+;; 自动对所有语言开启
+(require 'idle-highlight)
+(add-hook 'prog-mode-hook 'idle-highlight)
+
+;; multiple-cursors 多点编辑
+(require 'multiple-cursors)
+
+;; expand-region mark 再也不是麻烦了
+;; 似乎已经内置了呀
+;; (require 'expand-region)
+(global-set-key (kbd "C-c m") 'er/expand-region)
+
+;; figlet 得到醒目的文本
+;;  ___ _      _     _
+;; | __(_)__ _| |___| |_
+;; | _|| / _` | / -_)  _|
+;; |_| |_\__, |_\___|\__|
+;;       |___/
+(require 'figlet)
+
+;; goto-last-change
+;; 回到上次编辑的地方
+(require 'goto-last-change)
+(global-set-key (kbd "C-c ,") 'goto-last-change)
+
+;; 注释，在没有 region 的时候注释当前行
+(defun my-comment-or-uncomment-region (beg end &optional arg)
+  (interactive
+   (if	(use-region-p)
+       (list (region-beginning) (region-end) nil)
+     (list (line-beginning-position) (line-beginning-position 2))
+     ))
+  (comment-or-uncomment-region beg end arg))
+;; 替换原有注释命令
+(global-set-key [remap comment-or-uncomment-region] 'my-comment-or-uncomment-region)
+
+;; 将 C 代码使用 if 0 屏蔽掉
+(defun if-0-code ()
+  "invalid the code in the region."
+  (interactive)
+  (let ((text
+	 (concat "#if 0\n" (buffer-substring-no-properties (region-beginning) (region-end)) "#endif")))
+    (kill-region (region-beginning) (region-end))
+    (insert text))
+  )
+
+;; 将被 if 屏蔽掉的代码置为灰色
+(require 'hideif)
+(setq hide-ifdef-initially t)
+(add-hook 'c-mode-common-hook
+	  (lambda ()
+	    (setq hide-ifdef-shadow t)
+	    (setq hide-ifdef-mode t)
+	    (hide-ifdefs)
+	                ))
+;;; .emacs ends here
