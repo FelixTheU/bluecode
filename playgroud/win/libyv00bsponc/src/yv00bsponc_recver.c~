@@ -1,0 +1,241 @@
+/****************************************************************************************
+ * 文 件 名	: yv00bsponc_recver.c
+ * 项目名称	: YVGA1207001A
+ * 模 块 名	: 单向通信网络库
+ * 功   能	: 单向接收接口实现
+ * 操作系统	: LINUX
+ * 修改记录	: 无
+ * 版   本	: Rev 0.1.0
+ *- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+ * 设    计	: zhengsw      '2016-11-03
+ * 编    码	: zhengsw      '2016-11-03
+ * 修    改	: 
+ ****************************************************************************************
+ *- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+ * 公司介绍及版权说明
+ *
+ *           (C)Copyright 2012 YView    Corporation All Rights Reserved.
+ *- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+ ***************************************************************************************/
+#include "yv00bsponc.h"
+#include <stddef.h>
+#include <string.h>
+#include <unistd.h>
+#include <errno.h>
+#include <malloc.h>
+#include <pthread.h>
+
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <poll.h>
+
+#include <list.h>
+#include <yvcommon_def.h>
+#include "yv00bsponc_util.h"
+#include "yv00bsponc_debug.h"
+#include "yv00bsponc_packetQueue.h"
+#include "yv00bsponc_type.h"
+#include "yv00bsponc_netIO.h"
+
+#define ONC_POLL_INTERVAL	(500)	/* ms */
+
+typedef struct sOncRecv
+{
+	int sockFd;								/* socket 描述符 */
+	struct sockaddr_in stSelfSockAddr;		/* 本端地址 */
+	struct sockaddr_in stPeerSockAddr;		/* 对端地址 */
+
+
+	ST_PacketQueue	 sendQueue;				/* 发送队列 */
+	pthread_t		 tidRecver;				/* 发送线程id */
+	int				 bThreadGoOn;			/* 发送线程是否继续 */
+
+	pthread_mutex_t		mutexQueue;			/* 互斥锁，保护发送队列 */
+	pthread_cond_t		condQueue;			/* 条件变量，判断队列是否为空 */
+	pthread_mutex_t		mutexCond;			/* 配合条件变量的互斥锁 */
+} ST_OncRecv;
+
+
+int bsponc_validateProto(ST_OncProtocol *pProto)
+{
+	if (NULL == pProto)
+	{
+		return FALSE;
+	}
+
+	/* 检验前导码 */
+	if (strcmp(pProto->magic, ONC_PROTO_MAGIC) != 0)
+	{
+		return FALSE;
+	}
+
+	/* 检验crc */
+	return TRUE;
+}
+
+int bsponc_processRecvedMsgFromIp(ST_OncRecv *pOnc, struct sockaddr_in *pAddr, ST_OncProtocol *pProtoHdr, char *pByBuff, int lBuffLen)
+{
+	return 0;
+}
+
+int bsponc_processRecvedMsg(ST_OncRecv *pOnc, struct sockaddr_in *pAddr, ST_OncProtocol *pProtoHdr, char *pByBuff, int lBuffLen)
+{
+	/* 根据 ip 交给相应的 ip 消息去处理 */
+	return 0;
+}
+
+static inline
+void *threadFun_recver(void *pFunData)
+{
+	int				 lSts	= YV_FAIL;
+	ST_OncRecv		*pOnc	= NULL;
+	struct pollfd   pfd[1];
+	struct sockaddr_in stAddrFrom;
+	ST_OncProtocol  stOncProto;
+	char byRecvBuff[ONC_MSS + 1] = { 0 };
+	
+	yv_Assert(pFunData);
+	if (NULL == pFunData)
+	{
+		goto OUT;
+	}
+
+	pOnc = (ST_OncRecv *)pFunData;
+	pfd[0].fd = pOnc->sockFd;
+	pfd[0].events = POLLIN;
+	
+	while (pOnc->bThreadGoOn)
+	{
+		lSts = poll(pfd, DIMEN_OF(pfd), ONC_POLL_INTERVAL);
+		if (lSts < 0)
+		{
+			if (EINTR == errno)
+			{
+				continue;
+			}
+			else
+			{
+				DEV_DEBUG_INFO("poll 接收失败");
+				goto OUT;
+			}
+		}
+		if (0 == lSts)
+		{
+			continue;
+		}
+
+		/* 有数据到来 */
+		if (pfd[0].revents & POLLIN)
+		{
+			lSts = bsponc_recvMsg(pOnc->sockFd, &stAddrFrom, &stOncProto, byRecvBuff, sizeof (byRecvBuff));
+			if (lSts < 0)
+			{
+				DEV_DEBUG_INFO("bsponc_recvMsg 出错");
+				break;
+			}
+
+			/* 验证协议头 */
+			if (!bsponc_validateProto(&stOncProto))
+			{
+				continue;
+			}
+
+			bsponc_processRecvedMsg(pOnc, &stAddrFrom, &stOncProto, byRecvBuff, lSts);
+
+		}
+	}
+	/* 使用 poll 接收 */
+	/* 1）根据来源ip 放入不同的接收缓冲区中 */
+	/* 2）每个缓冲区中有一个接收队列，和一个msg 信息列表 */
+	/* 3）根据当前到达的新的一包消息，接收的缓冲区判断是否能够提交新一包消息 */
+	/* 4）可以提交便通知，使用 bsponc_recv 可用 */
+
+	
+OUT:	
+	return NULL;
+}
+
+
+
+int bsponc_recvInit(ONC_RecvHandle *pHandle, unsigned short recvPort)
+{
+	int lSts = YV_FAIL;
+	int lRet = YV_FAIL;
+	ST_OncRecv *pOnc = NULL;
+	
+	if (NULL == pHandle)
+	{
+		DEV_DEBUG_INFO("参数无效");
+		lRet = -EINVAL;
+		goto OUT;
+	}
+
+	pOnc = (ST_OncRecv *)malloc(sizeof(ST_OncRecv));
+	if (NULL == pOnc)
+	{
+		DEV_DEBUG_INFO("malloc ST_OncRecv 失败");
+		lRet = -ENOSPC;
+		goto OUT;
+	}
+
+	lSts = socket(PF_INET, SOCK_DGRAM, 0);
+	if (lSts < 0)
+	{
+		DEV_DEBUG_INFO("创建套接字失败");
+		lRet = lSts;
+		goto FREE;
+	}
+
+	/* 设置端口 */
+	pOnc->stSelfSockAddr.sin_family		 = AF_INET;
+	pOnc->stSelfSockAddr.sin_port		 = htons(recvPort);
+	pOnc->stSelfSockAddr.sin_addr.s_addr = INADDR_ANY;
+	/* 绑定端口 */
+	lSts = bind(pOnc->sockFd, (struct sockaddr *)&pOnc->stSelfSockAddr, sizeof (pOnc->stSelfSockAddr));
+	if (lSts < 0)
+	{
+		DEV_DEBUG_INFO("socket bind 失败");
+		lRet = lSts;
+		goto CLOSE;
+	}
+
+	/* 开启接收线程 */
+	lSts = pthread_create(&pOnc->tidRecver, NULL, threadFun_recver, pOnc);
+	if (lSts < 0)
+	{
+		DEV_DEBUG_INFO("创建接收线程失败");
+		lRet = lSts;
+		goto CLOSE;
+	}
+
+	lRet = YV_SUCCESS;
+	*pHandle = pOnc;
+	goto OUT;
+	
+	/* 开启接收线程 */
+CLOSE:
+	close(pOnc->sockFd);
+FREE:
+	free(pOnc);
+OUT:	
+	return lRet;
+}
+
+int bsponc_recvFini(ONC_RecvHandle handle)
+{
+	return 0;
+}
+	
+
+int bsponc_recvGetFd(ONC_RecvHandle handle)
+{
+	return 0;
+}
+	
+int bsponc_recv(ONC_RecvHandle handle, char *pByBuff, int lBuffLen)
+{
+	return 0;
+}
